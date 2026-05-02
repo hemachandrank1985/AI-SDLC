@@ -1,0 +1,266 @@
+{
+  "_meta": {
+    "description": "Ground-truth vulnerability catalogue for OWASP Juice Shop v15.3.0",
+    "juice_shop_version": "15.3.0",
+    "created": "2026-05-02",
+    "total_vulnerabilities": 20,
+    "sources": [
+      "OWASP Juice Shop official challenge list",
+      "CVE/NVD advisories for dependencies",
+      "Manual code review"
+    ],
+    "matching_rules": {
+      "sast_codeql": "Match by ruleId prefix (e.g. js/sql-injection) OR file path + line proximity (+/-5 lines)",
+      "sca_npm_audit": "Match by CVE ID or advisory ID in the npm audit JSON output",
+      "dast_zap": "Match by ZAP pluginId OR alert name substring"
+    }
+  },
+  "vulnerabilities": [
+    {
+      "id": "GT-001",
+      "title": "SQL Injection – Login bypass",
+      "owasp_category": "A03:2021 – Injection",
+      "cwe": "CWE-89",
+      "severity": "CRITICAL",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/sql-injection"],
+      "file_path": "routes/login.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-002",
+      "title": "NoSQL Injection – User search",
+      "owasp_category": "A03:2021 – Injection",
+      "cwe": "CWE-943",
+      "severity": "HIGH",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/nosql-injection"],
+      "file_path": "routes/userProfile.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-003",
+      "title": "Stored XSS – Product review",
+      "owasp_category": "A03:2021 – Injection",
+      "cwe": "CWE-79",
+      "severity": "HIGH",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["40012", "40014", "40016", "40017"],
+      "zap_alert_name": "Cross Site Scripting (Persistent)",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-004",
+      "title": "Reflected XSS – Search bar",
+      "owasp_category": "A03:2021 – Injection",
+      "cwe": "CWE-79",
+      "severity": "HIGH",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["40012"],
+      "zap_alert_name": "Cross Site Scripting (Reflected)",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-005",
+      "title": "Broken Access Control – Admin route exposure",
+      "owasp_category": "A01:2021 – Broken Access Control",
+      "cwe": "CWE-285",
+      "severity": "CRITICAL",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["10094", "10095"],
+      "zap_alert_name": "Path Traversal",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-006",
+      "title": "Insecure JWT signature verification bypass",
+      "owasp_category": "A02:2021 – Cryptographic Failures",
+      "cwe": "CWE-347",
+      "severity": "CRITICAL",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/jwt-missing-verification"],
+      "file_path": "lib/insecurity.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-007",
+      "title": "Hardcoded credentials in source",
+      "owasp_category": "A07:2021 – Identification and Authentication Failures",
+      "cwe": "CWE-798",
+      "severity": "HIGH",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/hardcoded-credentials"],
+      "file_path": "config/default.yml",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-008",
+      "title": "Prototype Pollution – lodash < 4.17.21",
+      "owasp_category": "A06:2021 – Vulnerable and Outdated Components",
+      "cwe": "CWE-1321",
+      "severity": "HIGH",
+      "source_layer": "SCA",
+      "expected_tool": "npm audit",
+      "cve_ids": ["CVE-2021-23337", "CVE-2020-28500"],
+      "npm_advisory_ids": ["1006", "1065"],
+      "package": "lodash",
+      "detectable_by": {"B1": false, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-009",
+      "title": "ReDoS – vulnerable-regex in validator",
+      "owasp_category": "A06:2021 – Vulnerable and Outdated Components",
+      "cwe": "CWE-400",
+      "severity": "MEDIUM",
+      "source_layer": "SCA",
+      "expected_tool": "npm audit",
+      "cve_ids": ["CVE-2021-3807"],
+      "package": "ansi-regex",
+      "detectable_by": {"B1": false, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-010",
+      "title": "Path Traversal – file download endpoint",
+      "owasp_category": "A01:2021 – Broken Access Control",
+      "cwe": "CWE-22",
+      "severity": "HIGH",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/path-injection"],
+      "file_path": "routes/fileServer.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-011",
+      "title": "Missing Content Security Policy header",
+      "owasp_category": "A05:2021 – Security Misconfiguration",
+      "cwe": "CWE-693",
+      "severity": "MEDIUM",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["10038"],
+      "zap_alert_name": "Content Security Policy (CSP) Header Not Set",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-012",
+      "title": "Sensitive data exposure – credit card in response",
+      "owasp_category": "A02:2021 – Cryptographic Failures",
+      "cwe": "CWE-312",
+      "severity": "HIGH",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["10062"],
+      "zap_alert_name": "PII Disclosure",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-013",
+      "title": "CSRF – No SameSite cookie attribute",
+      "owasp_category": "A01:2021 – Broken Access Control",
+      "cwe": "CWE-352",
+      "severity": "MEDIUM",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["10017"],
+      "zap_alert_name": "Cookie No HttpOnly Flag",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-014",
+      "title": "XXE injection – XML product import",
+      "owasp_category": "A03:2021 – Injection",
+      "cwe": "CWE-611",
+      "severity": "HIGH",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/xml-injection"],
+      "file_path": "routes/xmlUpload.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-015",
+      "title": "Insecure Deserialization – node-serialize",
+      "owasp_category": "A08:2021 – Software and Data Integrity Failures",
+      "cwe": "CWE-502",
+      "severity": "CRITICAL",
+      "source_layer": "SCA",
+      "expected_tool": "npm audit",
+      "cve_ids": ["CVE-2017-5941"],
+      "package": "node-serialize",
+      "detectable_by": {"B1": false, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-016",
+      "title": "Server-Side Request Forgery (SSRF)",
+      "owasp_category": "A10:2021 – SSRF",
+      "cwe": "CWE-918",
+      "severity": "HIGH",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/server-side-request-forgery"],
+      "file_path": "routes/profileImageUrlUpload.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-017",
+      "title": "Weak password hashing (MD5)",
+      "owasp_category": "A02:2021 – Cryptographic Failures",
+      "cwe": "CWE-327",
+      "severity": "HIGH",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/weak-cryptographic-algorithm"],
+      "file_path": "lib/insecurity.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-018",
+      "title": "Directory listing exposed",
+      "owasp_category": "A05:2021 – Security Misconfiguration",
+      "cwe": "CWE-548",
+      "severity": "MEDIUM",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["10048"],
+      "zap_alert_name": "Remote File Inclusion",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-019",
+      "title": "Unvalidated redirect / open redirect",
+      "owasp_category": "A01:2021 – Broken Access Control",
+      "cwe": "CWE-601",
+      "severity": "MEDIUM",
+      "source_layer": "DAST",
+      "expected_tool": "ZAP",
+      "zap_plugin_ids": ["10028"],
+      "zap_alert_name": "Open Redirect",
+      "detectable_by": {"B1": true, "B2": true, "AG_SDLC": true}
+    },
+    {
+      "id": "GT-020",
+      "title": "Command injection via child_process",
+      "owasp_category": "A03:2021 – Injection",
+      "cwe": "CWE-78",
+      "severity": "CRITICAL",
+      "source_layer": "SAST",
+      "expected_tool": "CodeQL",
+      "codeql_rule_ids": ["js/command-line-injection"],
+      "file_path": "routes/dataExport.ts",
+      "detectable_by": {"B1": false, "B2": false, "AG_SDLC": true}
+    }
+  ],
+  "expected_totals": {
+    "B1": {"detectable": 8, "not_detectable": 12},
+    "B2": {"detectable": 11, "not_detectable": 9},
+    "AG_SDLC": {"detectable": 20, "not_detectable": 0}
+  }
+}
