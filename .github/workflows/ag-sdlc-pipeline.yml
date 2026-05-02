@@ -1,0 +1,365 @@
+name: AG-SDLC Experiment Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Pipeline configuration (B1 | B2 | AG-SDLC)'
+        required: true
+        default: 'AG-SDLC'
+      run_id:
+        description: 'Experiment run identifier (e.g., run-01)'
+        required: true
+        default: 'run-01'
+
+env:
+  CONFIG: ${{ github.event.inputs.config || 'AG-SDLC' }}
+  RUN_ID: ${{ github.event.inputs.run_id || 'run-auto' }}
+  JUICE_SHOP_VERSION: '15.3.0'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 0 – Record workflow start timestamp
+  # ─────────────────────────────────────────────────────────────
+  record-start:
+    name: Record Pipeline Start
+    runs-on: ubuntu-latest
+    outputs:
+      start_ts: ${{ steps.ts.outputs.start_ts }}
+    steps:
+      - name: Capture start timestamp
+        id: ts
+        run: |
+          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "start_ts=${TS}" >> $GITHUB_OUTPUT
+          echo "Pipeline start: ${TS}  config=${{ env.CONFIG }}  run=${{ env.RUN_ID }}"
+
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 1 – Checkout + Install (all configs)
+  # ─────────────────────────────────────────────────────────────
+  setup:
+    name: Checkout & Install
+    runs-on: ubuntu-latest
+    needs: record-start
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Clone OWASP Juice Shop ${{ env.JUICE_SHOP_VERSION }}
+        run: |
+          git clone --depth 1 --branch v${{ env.JUICE_SHOP_VERSION }} \
+            https://github.com/juice-shop/juice-shop.git juice-shop
+          cd juice-shop && npm ci --omit=dev
+
+      - name: Cache Juice Shop
+        uses: actions/cache@v4
+        with:
+          path: juice-shop
+          key: juice-shop-${{ env.JUICE_SHOP_VERSION }}
+
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 2 – SAST (CodeQL)  – B1: skip | B2: skip | AG-SDLC: run
+  # B1 baseline uses no SAST; B2 adds SCA only; AG-SDLC adds all
+  # ─────────────────────────────────────────────────────────────
+  sast:
+    name: SAST – CodeQL
+    runs-on: ubuntu-latest
+    needs: setup
+    if: ${{ github.event.inputs.config == 'AG-SDLC' || github.event.inputs.config == 'B2' }}
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record SAST start
+        id: sast_start
+        run: echo "sast_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-and-quality
+
+      - name: Restore Juice Shop cache
+        uses: actions/cache@v4
+        with:
+          path: juice-shop
+          key: juice-shop-${{ env.JUICE_SHOP_VERSION }}
+
+      - name: Run CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: codeql-results
+          upload: false
+
+      - name: Record SAST detection timestamp
+        id: sast_end
+        run: |
+          DETECTION_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "sast_end=${DETECTION_TS}" >> $GITHUB_OUTPUT
+          echo "SAST detection timestamp: ${DETECTION_TS}"
+
+      - name: Upload CodeQL SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: codeql-results/*.sarif
+          retention-days: 90
+
+      - name: Append SAST timing to run manifest
+        run: |
+          mkdir -p experiment-data
+          echo '{"step":"sast","config":"${{ env.CONFIG }}","run_id":"${{ env.RUN_ID }}",'\
+               '"start":"${{ steps.sast_start.outputs.sast_start }}",'\
+               '"end":"${{ steps.sast_end.outputs.sast_end }}"}' \
+            > experiment-data/sast-timing.json
+
+      - name: Upload SAST timing
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-timing-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: experiment-data/sast-timing.json
+
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 3 – SCA (npm audit)  – B1: skip | B2+AG-SDLC: run
+  # ─────────────────────────────────────────────────────────────
+  sca:
+    name: SCA – npm audit
+    runs-on: ubuntu-latest
+    needs: setup
+    if: ${{ github.event.inputs.config != 'B1' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Juice Shop cache
+        uses: actions/cache@v4
+        with:
+          path: juice-shop
+          key: juice-shop-${{ env.JUICE_SHOP_VERSION }}
+
+      - name: Record SCA start
+        id: sca_start
+        run: echo "sca_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
+
+      - name: Run npm audit (JSON)
+        working-directory: juice-shop
+        run: |
+          npm audit --json > ../sca-report.json 2>&1 || true
+
+      - name: Record SCA detection timestamp
+        id: sca_end
+        run: |
+          DETECTION_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "sca_end=${DETECTION_TS}" >> $GITHUB_OUTPUT
+          echo "SCA detection timestamp: ${DETECTION_TS}"
+
+      - name: Upload SCA report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-report-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: sca-report.json
+          retention-days: 90
+
+      - name: Save SCA timing
+        run: |
+          mkdir -p experiment-data
+          echo '{"step":"sca","config":"${{ env.CONFIG }}","run_id":"${{ env.RUN_ID }}",'\
+               '"start":"${{ steps.sca_start.outputs.sca_start }}",'\
+               '"end":"${{ steps.sca_end.outputs.sca_end }}"}' \
+            > experiment-data/sca-timing.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sca-timing-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: experiment-data/sca-timing.json
+
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 4 – DAST (OWASP ZAP)  – all configs
+  # ─────────────────────────────────────────────────────────────
+  dast:
+    name: DAST – OWASP ZAP
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Juice Shop cache
+        uses: actions/cache@v4
+        with:
+          path: juice-shop
+          key: juice-shop-${{ env.JUICE_SHOP_VERSION }}
+
+      - name: Start Juice Shop
+        run: |
+          cd juice-shop
+          npm start &
+          echo "Waiting for Juice Shop to be ready..."
+          timeout 120 bash -c 'until curl -s http://localhost:3000 > /dev/null; do sleep 3; done'
+          echo "Juice Shop is up."
+
+      - name: Record DAST start
+        id: dast_start
+        run: echo "dast_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
+
+      - name: Run ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-J zap-report.json'
+          fail_action: false
+          allow_issue_writing: false
+
+      - name: Record DAST detection timestamp
+        id: dast_end
+        run: |
+          DETECTION_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "dast_end=${DETECTION_TS}" >> $GITHUB_OUTPUT
+          echo "DAST detection timestamp: ${DETECTION_TS}"
+
+      - name: Upload ZAP JSON report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: zap-report.json
+          retention-days: 90
+
+      - name: Save DAST timing
+        run: |
+          mkdir -p experiment-data
+          echo '{"step":"dast","config":"${{ env.CONFIG }}","run_id":"${{ env.RUN_ID }}",'\
+               '"start":"${{ steps.dast_start.outputs.dast_start }}",'\
+               '"end":"${{ steps.dast_end.outputs.dast_end }}"}' \
+            > experiment-data/dast-timing.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dast-timing-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: experiment-data/dast-timing.json
+
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 5 – Aggregate findings + Risk scoring (AG-SDLC only)
+  # ─────────────────────────────────────────────────────────────
+  govern:
+    name: AG-SDLC Governance (OPA + Risk Score)
+    runs-on: ubuntu-latest
+    needs: [sast, sca, dast]
+    if: ${{ always() && github.event.inputs.config == 'AG-SDLC' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install OPA
+        run: |
+          curl -L -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v0.63.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+
+      - name: Download all tool reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-report-AG-SDLC-${{ env.RUN_ID }}'
+          merge-multiple: true
+          path: reports/
+
+      - name: Aggregate findings
+        run: |
+          node aggregate_findings.js \
+            --codeql reports/codeql-sarif.sarif \
+            --sca    reports/sca-report.json \
+            --zap    reports/zap-report.json \
+            --out    findings-aggregated.json
+
+      - name: Record governance start
+        id: gov_start
+        run: echo "gov_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
+
+      - name: Compute risk score
+        run: |
+          node risk_scoring.js findings-aggregated.json risk-score.json
+          cat risk-score.json
+
+      - name: Evaluate OPA policy
+        run: |
+          opa eval \
+            --data governance/security.rego \
+            --input risk-score.json \
+            --format pretty \
+            'data.security.allow' \
+            | tee opa-decision.json
+
+      - name: Record governance end
+        id: gov_end
+        run: echo "gov_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
+
+      - name: Log evidence
+        run: |
+          node evidence_logger.js \
+            public/sample-data/evidence_log.json \
+            opa-decision.json
+
+      - name: Save governance timing
+        run: |
+          echo '{"step":"govern","config":"${{ env.CONFIG }}","run_id":"${{ env.RUN_ID }}",'\
+               '"start":"${{ steps.gov_start.outputs.gov_start }}",'\
+               '"end":"${{ steps.gov_end.outputs.gov_end }}"}' \
+            > govern-timing.json
+
+      - name: Upload governance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: govern-artifacts-${{ env.RUN_ID }}
+          path: |
+            findings-aggregated.json
+            risk-score.json
+            opa-decision.json
+            govern-timing.json
+          retention-days: 90
+
+  # ─────────────────────────────────────────────────────────────
+  # PHASE 6 – Emit run manifest (all configs)
+  # ─────────────────────────────────────────────────────────────
+  emit-manifest:
+    name: Emit Run Manifest
+    runs-on: ubuntu-latest
+    needs: [record-start, dast, sca, sast]
+    if: always()
+    steps:
+      - name: Compute pipeline end + emit manifest
+        run: |
+          END_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat <<EOF > run-manifest.json
+          {
+            "config": "${{ env.CONFIG }}",
+            "run_id": "${{ env.RUN_ID }}",
+            "workflow_run_number": "${{ github.run_number }}",
+            "commit_sha": "${{ github.sha }}",
+            "commit_ts": "${{ needs.record-start.outputs.start_ts }}",
+            "pipeline_end_ts": "${END_TS}",
+            "repository": "${{ github.repository }}"
+          }
+          EOF
+          cat run-manifest.json
+
+      - name: Upload run manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-manifest-${{ env.CONFIG }}-${{ env.RUN_ID }}
+          path: run-manifest.json
+          retention-days: 90
